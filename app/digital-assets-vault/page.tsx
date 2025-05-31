@@ -411,7 +411,33 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
         >
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center flex-1" onClick={() => setSelectedFolder(folder)}>
+              <div
+                className="flex items-center flex-1"
+                onClick={() => {
+                  // Set as selected folder
+                  setSelectedFolder(folder)
+
+                  // If folder has subfolders, expand it
+                  if (hasSubfolders) {
+                    setExpandedFolders((prev) => {
+                      const newSet = new Set(prev)
+                      if (!newSet.has(folder.id)) {
+                        newSet.add(folder.id)
+                      }
+                      return newSet
+                    })
+                  }
+
+                  // If folder has no subfolders, show the subfolder creation form
+                  if (!hasSubfolders) {
+                    // Close any other open forms first
+                    setShowAddFolder(false)
+                    setEditingFolder(null)
+                    // Open subfolder form for this folder
+                    setAddingSubfolderTo(folder.id)
+                  }
+                }}
+              >
                 {hasSubfolders && (
                   <button
                     onClick={(e) => {
