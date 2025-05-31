@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import {
   ArrowLeft,
   Eye,
@@ -18,10 +18,18 @@ import {
   X,
   ChevronRight,
   ChevronDown,
-  Folder,
-  FolderOpen,
-  Trash2,
+  ImageIcon,
+  Video,
+  FileText,
+  BarChart,
+  FileArchive,
+  FilePen,
+  Presentation,
+  Scale,
   Upload,
+  FolderOpen,
+  Folder,
+  Trash2,
 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -276,12 +284,37 @@ function VaultDoor({
   )
 }
 
+// Map folder types to colorful icons
+const getFolderIcon = (folderType: string, isOpen = false) => {
+  const type = folderType.toLowerCase()
+
+  if (type.includes("image") || type.includes("photo")) {
+    return <ImageIcon className="h-6 w-6 text-orange-400" />
+  } else if (type.includes("video")) {
+    return <Video className="h-6 w-6 text-blue-400" />
+  } else if (type.includes("document")) {
+    return <FileText className="h-6 w-6 text-purple-400" />
+  } else if (type.includes("report")) {
+    return <BarChart className="h-6 w-6 text-green-400" />
+  } else if (type.includes("archive")) {
+    return <FileArchive className="h-6 w-6 text-indigo-400" />
+  } else if (type.includes("drawing")) {
+    return <FilePen className="h-6 w-6 text-cyan-400" />
+  } else if (type.includes("presentation") || type.includes("slide")) {
+    return <Presentation className="h-6 w-6 text-yellow-400" />
+  } else if (type.includes("legal") || type.includes("contract")) {
+    return <Scale className="h-6 w-6 text-red-400" />
+  } else {
+    // Default folder icon
+    return isOpen ? <FolderOpen className="h-6 w-6 text-blue-400" /> : <Folder className="h-6 w-6 text-blue-400" />
+  }
+}
+
 // Vault Interior Component with subfolder functionality
 function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
   const [folders, setFolders] = useState<FolderType[]>([])
   const [selectedFolder, setSelectedFolder] = useState<FolderType | null>(null)
   const [expandedFolders, setExpandedFolders] = useState<Set<number>>(new Set())
-  const [currentPath, setCurrentPath] = useState<FolderType[]>([])
   const [showAddFolder, setShowAddFolder] = useState(false)
   const [editingFolder, setEditingFolder] = useState<number | null>(null)
   const [newFolderName, setNewFolderName] = useState("")
@@ -291,12 +324,8 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
   const [addingSubfolderTo, setAddingSubfolderTo] = useState<number | null>(null)
   const [showFileUpload, setShowFileUpload] = useState<number | null>(null)
 
-  // Load folders on component mount
-  useEffect(() => {
-    loadFolders()
-  }, [])
-
-  const loadFolders = async () => {
+  // Load folders on component mount - optimized with useCallback
+  const loadFolders = useCallback(async () => {
     setLoading(true)
     try {
       await initializeDatabase()
@@ -307,79 +336,119 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const handleAddFolder = async (parentId: number | null = null) => {
-    if (newFolderName.trim() && newFolderType.trim()) {
-      const newFolder = {
-        name: newFolderName.trim(),
-        type: newFolderType.trim(),
-        status: newFolderStatus,
-        parent_id: parentId,
-        icon: parentId ? "📁" : "📁",
-        color: parentId ? "text-blue-400" : "text-gray-500",
-        file_count: 0,
-        user_id: "demo-user",
-      }
+  useEffect(() => {
+    loadFolders()
+  }, [loadFolders])
 
-      const createdFolder = await createFolder(newFolder)
-      if (createdFolder) {
-        await loadFolders()
-        if (parentId) {
-          setExpandedFolders((prev) => new Set([...prev, parentId]))
+  // Optimized folder creation with useCallback
+  const handleAddFolder = useCallback(
+    async (parentId: number | null = null) => {
+      if (newFolderName.trim() && newFolderType.trim()) {
+        const newFolder = {
+          name: newFolderName.trim(),
+          type: newFolderType.trim(),
+          status: newFolderStatus,
+          parent_id: parentId,
+          icon: "📁", // We'll use Lucide icons for display, but keep emoji for database
+          color: parentId ? "text-blue-400" : "text-gray-500",
+          file_count: 0,
+          user_id: "demo-user",
+        }
+
+        try {
+          const createdFolder = await createFolder(newFolder)
+          if (createdFolder) {
+            // If this is a subfolder, make sure the parent folder is expanded
+            if (parentId) {
+              setExpandedFolders((prev) => {
+                const newSet = new Set(prev)
+                newSet.add(parentId)
+                return newSet
+              })
+            }
+
+            // Reload folders to get the updated structure
+            await loadFolders()
+          }
+
+          // Reset form state
+          setNewFolderName("")
+          setNewFolderType("")
+          setNewFolderStatus("Secure")
+          setShowAddFolder(false)
+          setAddingSubfolderTo(null)
+        } catch (error) {
+          console.error("Error creating folder:", error)
+          alert("Failed to create folder. Please try again.")
         }
       }
+    },
+    [newFolderName, newFolderType, newFolderStatus, loadFolders],
+  )
 
-      setNewFolderName("")
-      setNewFolderType("")
-      setNewFolderStatus("Secure")
-      setShowAddFolder(false)
-      setAddingSubfolderTo(null)
-    }
-  }
-
-  const handleEditFolder = (folder: FolderType) => {
+  // Optimized folder editing
+  const handleEditFolder = useCallback((folder: FolderType) => {
     setEditingFolder(folder.id)
     setNewFolderName(folder.name)
     setNewFolderType(folder.type)
     setNewFolderStatus(folder.status)
-  }
+  }, [])
 
-  const handleSaveEdit = async () => {
+  // Optimized save edit function
+  const handleSaveEdit = useCallback(async () => {
     if (editingFolder && newFolderName.trim() && newFolderType.trim()) {
-      await updateFolder(editingFolder, {
-        name: newFolderName.trim(),
-        type: newFolderType.trim(),
-        status: newFolderStatus,
-      })
-      await loadFolders()
-      setEditingFolder(null)
-      setNewFolderName("")
-      setNewFolderType("")
-      setNewFolderStatus("Secure")
-    }
-  }
-
-  const handleDeleteFolder = async (folderId: number) => {
-    if (confirm("Are you sure you want to delete this folder and all its subfolders?")) {
-      await deleteFolder(folderId)
-      await loadFolders()
-      if (selectedFolder?.id === folderId) {
-        setSelectedFolder(null)
+      try {
+        await updateFolder(editingFolder, {
+          name: newFolderName.trim(),
+          type: newFolderType.trim(),
+          status: newFolderStatus,
+        })
+        await loadFolders()
+      } catch (error) {
+        console.error("Error updating folder:", error)
+        alert("Failed to update folder. Please try again.")
+      } finally {
+        setEditingFolder(null)
+        setNewFolderName("")
+        setNewFolderType("")
+        setNewFolderStatus("Secure")
       }
     }
-  }
+  }, [editingFolder, newFolderName, newFolderType, newFolderStatus, loadFolders])
 
-  const handleCancelEdit = () => {
+  // Optimized folder deletion
+  const handleDeleteFolder = useCallback(
+    async (folderId: number) => {
+      if (confirm("Are you sure you want to delete this folder and all its subfolders?")) {
+        try {
+          await deleteFolder(folderId)
+          await loadFolders()
+          if (selectedFolder?.id === folderId) {
+            setSelectedFolder(null)
+          }
+        } catch (error) {
+          console.error("Error deleting folder:", error)
+          alert("Failed to delete folder. Please try again.")
+        }
+      }
+    },
+    [selectedFolder, loadFolders],
+  )
+
+  // Optimized form cancellation
+  const handleCancelEdit = useCallback(() => {
     setEditingFolder(null)
     setNewFolderName("")
     setNewFolderType("")
     setNewFolderStatus("Secure")
     setShowAddFolder(false)
     setAddingSubfolderTo(null)
-  }
+  }, [])
 
-  const toggleFolderExpansion = (folderId: number) => {
+  // Optimized folder expansion toggle
+  const toggleFolderExpansion = useCallback((folderId: number) => {
     setExpandedFolders((prev) => {
       const newSet = new Set(prev)
       if (newSet.has(folderId)) {
@@ -389,272 +458,294 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
       }
       return newSet
     })
-  }
+  }, [])
 
-  const handleFileCountUpdate = async (folderId: number, newCount: number) => {
-    await updateFolder(folderId, { file_count: newCount })
-    await loadFolders()
-  }
+  // Optimized file count update
+  const handleFileCountUpdate = useCallback(
+    async (folderId: number, newCount: number) => {
+      try {
+        await updateFolder(folderId, { file_count: newCount })
+        await loadFolders()
+      } catch (error) {
+        console.error("Error updating file count:", error)
+      }
+    },
+    [loadFolders],
+  )
 
-  const renderFolder = (folder: FolderType, level = 0): React.ReactNode => {
-    const isExpanded = expandedFolders.has(folder.id)
-    const hasSubfolders = folder.subfolders && folder.subfolders.length > 0
-    const isSelected = selectedFolder?.id === folder.id
+  // Optimized folder click handler
+  const handleFolderClick = useCallback(
+    (folder: FolderType) => {
+      // Set as selected folder
+      setSelectedFolder(folder)
 
-    return (
-      <div key={folder.id} className="w-full">
-        <Card
-          className={`bg-slate-800 border-slate-700 hover:border-slate-600 cursor-pointer transition-all mb-2 ${
-            isSelected ? "ring-2 ring-yellow-500" : ""
-          }`}
-          style={{ marginLeft: `${level * 20}px` }}
-        >
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div
-                className="flex items-center flex-1"
-                onClick={() => {
-                  // Set as selected folder
-                  setSelectedFolder(folder)
+      // If folder has subfolders, expand it
+      if (folder.subfolders && folder.subfolders.length > 0) {
+        toggleFolderExpansion(folder.id)
+      } else {
+        // If folder has no subfolders, show the subfolder creation form
+        // Close any other open forms first
+        setShowAddFolder(false)
+        setEditingFolder(null)
+        // Open subfolder form for this folder
+        setAddingSubfolderTo((current) => (current === folder.id ? null : folder.id))
+      }
+    },
+    [toggleFolderExpansion],
+  )
 
-                  // If folder has subfolders, expand it
-                  if (hasSubfolders) {
-                    setExpandedFolders((prev) => {
-                      const newSet = new Set(prev)
-                      if (!newSet.has(folder.id)) {
-                        newSet.add(folder.id)
-                      }
-                      return newSet
-                    })
-                  }
+  // Recursive folder rendering function - memoized for performance
+  const renderFolder = useCallback(
+    (folder: FolderType, level = 0): React.ReactNode => {
+      const isExpanded = expandedFolders.has(folder.id)
+      const hasSubfolders = folder.subfolders && folder.subfolders.length > 0
+      const isSelected = selectedFolder?.id === folder.id
 
-                  // If folder has no subfolders, show the subfolder creation form
-                  if (!hasSubfolders) {
-                    // Close any other open forms first
-                    setShowAddFolder(false)
-                    setEditingFolder(null)
-                    // Open subfolder form for this folder
-                    setAddingSubfolderTo(folder.id)
-                  }
-                }}
-              >
-                {hasSubfolders && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleFolderExpansion(folder.id)
-                    }}
-                    className="mr-2 text-slate-400 hover:text-white"
-                  >
-                    {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  </button>
-                )}
+      // Get appropriate icon based on folder type
+      const folderIcon = getFolderIcon(folder.type, isExpanded)
 
-                <span className={`text-2xl mr-3 ${folder.color}`}>
-                  {hasSubfolders ? (
-                    isExpanded ? (
-                      <FolderOpen className="h-6 w-6" />
-                    ) : (
-                      <Folder className="h-6 w-6" />
-                    )
-                  ) : (
-                    folder.icon
+      return (
+        <div key={folder.id} className="w-full">
+          <Card
+            className={`bg-slate-800 border-slate-700 hover:border-slate-600 cursor-pointer transition-all mb-2 ${
+              isSelected ? "ring-2 ring-yellow-500" : ""
+            }`}
+            style={{ marginLeft: `${level * 20}px` }}
+          >
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center flex-1" onClick={() => handleFolderClick(folder)}>
+                  {hasSubfolders && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleFolderExpansion(folder.id)
+                      }}
+                      className="mr-2 text-slate-400 hover:text-white"
+                    >
+                      {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </button>
                   )}
-                </span>
 
-                <div className="flex-1">
+                  <span className="text-2xl mr-3">{folderIcon}</span>
+
+                  <div className="flex-1">
+                    {editingFolder === folder.id ? (
+                      <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                        <Input
+                          value={newFolderName}
+                          onChange={(e) => setNewFolderName(e.target.value)}
+                          className="bg-slate-700 border-slate-600 text-white text-lg font-bold"
+                        />
+                        <Input
+                          value={newFolderType}
+                          onChange={(e) => setNewFolderType(e.target.value)}
+                          className="bg-slate-700 border-slate-600 text-slate-400 text-sm"
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <CardTitle className="text-white text-lg">{folder.name}</CardTitle>
+                        <p className="text-slate-400 text-sm">{folder.type}</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
                   {editingFolder === folder.id ? (
-                    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-                      <Input
-                        value={newFolderName}
-                        onChange={(e) => setNewFolderName(e.target.value)}
-                        className="bg-slate-700 border-slate-600 text-white text-lg font-bold"
-                      />
-                      <Input
-                        value={newFolderType}
-                        onChange={(e) => setNewFolderType(e.target.value)}
-                        className="bg-slate-700 border-slate-600 text-slate-400 text-sm"
-                      />
+                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={newFolderStatus}
+                        onChange={(e) => setNewFolderStatus(e.target.value as "Secure" | "Encrypted" | "Active")}
+                        className="bg-slate-700 border border-slate-600 text-white rounded px-2 py-1 text-xs"
+                      >
+                        <option value="Secure">Secure</option>
+                        <option value="Encrypted">Encrypted</option>
+                        <option value="Active">Active</option>
+                      </select>
+                      <Button onClick={handleSaveEdit} size="sm" className="bg-green-600 hover:bg-green-700">
+                        <Save className="h-3 w-3" />
+                      </Button>
+                      <Button onClick={handleCancelEdit} size="sm" variant="outline">
+                        <X className="h-3 w-3" />
+                      </Button>
                     </div>
                   ) : (
                     <>
-                      <CardTitle className="text-white text-lg">{folder.name}</CardTitle>
-                      <p className="text-slate-400 text-sm">{folder.type}</p>
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          // Close any other open forms first
+                          setShowAddFolder(false)
+                          setEditingFolder(null)
+                          // Then open this folder's subfolder form
+                          setAddingSubfolderTo(addingSubfolderTo === folder.id ? null : folder.id)
+                        }}
+                        size="sm"
+                        variant="ghost"
+                        className="text-slate-400 hover:text-white"
+                        title="Add subfolder"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleEditFolder(folder)
+                        }}
+                        size="sm"
+                        variant="ghost"
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <Edit2 className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteFolder(folder.id)
+                        }}
+                        size="sm"
+                        variant="ghost"
+                        className="text-slate-400 hover:text-red-400"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                      <div
+                        className={`px-2 py-1 rounded-full text-xs ${
+                          folder.status === "Secure"
+                            ? "bg-green-900 text-green-300"
+                            : folder.status === "Encrypted"
+                              ? "bg-blue-900 text-blue-300"
+                              : "bg-yellow-900 text-yellow-300"
+                        }`}
+                      >
+                        {folder.status}
+                      </div>
                     </>
                   )}
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                {editingFolder === folder.id ? (
-                  <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                    <select
-                      value={newFolderStatus}
-                      onChange={(e) => setNewFolderStatus(e.target.value as "Secure" | "Encrypted" | "Active")}
-                      className="bg-slate-700 border border-slate-600 text-white rounded px-2 py-1 text-xs"
-                    >
-                      <option value="Secure">Secure</option>
-                      <option value="Encrypted">Encrypted</option>
-                      <option value="Active">Active</option>
-                    </select>
-                    <Button onClick={handleSaveEdit} size="sm" className="bg-green-600 hover:bg-green-700">
-                      <Save className="h-3 w-3" />
-                    </Button>
-                    <Button onClick={handleCancelEdit} size="sm" variant="outline">
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        // Close any other open forms first
-                        setShowAddFolder(false)
-                        setEditingFolder(null)
-                        // Then open this folder's subfolder form
-                        setAddingSubfolderTo(addingSubfolderTo === folder.id ? null : folder.id)
-                      }}
-                      size="sm"
-                      variant="ghost"
-                      className="text-slate-400 hover:text-white"
-                      title="Add subfolder"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleEditFolder(folder)
-                      }}
-                      size="sm"
-                      variant="ghost"
-                      className="text-slate-400 hover:text-white"
-                    >
-                      <Edit2 className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDeleteFolder(folder.id)
-                      }}
-                      size="sm"
-                      variant="ghost"
-                      className="text-slate-400 hover:text-red-400"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                    <div
-                      className={`px-2 py-1 rounded-full text-xs ${
-                        folder.status === "Secure"
-                          ? "bg-green-900 text-green-300"
-                          : folder.status === "Encrypted"
-                            ? "bg-blue-900 text-blue-300"
-                            : "bg-yellow-900 text-yellow-300"
-                      }`}
-                    >
-                      {folder.status}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-2xl font-bold text-white">
-                  {folder.file_count} files
-                  {folder.subfolder_count > 0 && (
-                    <span className="text-slate-400 text-lg ml-2">• {folder.subfolder_count} subfolders</span>
-                  )}
-                </p>
-                <p className="text-slate-400 text-sm">
-                  Last accessed: {new Date(folder.updated_at).toLocaleDateString()}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowFileUpload(showFileUpload === folder.id ? null : folder.id)
-                  }}
-                  size="sm"
-                  variant="ghost"
-                  className="text-slate-400 hover:text-white"
-                  title="Upload files"
-                >
-                  <Upload className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-
-            {/* File Upload Component */}
-            {showFileUpload === folder.id && (
-              <div className="mt-4 pt-4 border-t border-slate-600">
-                <FileUpload
-                  folderId={folder.id}
-                  folderName={folder.name}
-                  folderPath={`vault/${folder.id}/${folder.name}`}
-                  onFilesChange={(count) => handleFileCountUpdate(folder.id, count)}
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Add subfolder form - only show when adding to this specific folder */}
-        {addingSubfolderTo === folder.id && (
-          <Card
-            className="bg-slate-800 border-slate-600 border-dashed mb-2"
-            style={{ marginLeft: `${(level + 1) * 20}px` }}
-          >
-            <CardHeader className="pb-3">
-              <CardTitle className="text-white text-lg">Add Subfolder to {folder.name}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Input
-                placeholder="Subfolder name"
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                className="bg-slate-700 border-slate-600 text-white"
-              />
-              <Input
-                placeholder="Subfolder type (e.g., Contracts, Photos, Reports)"
-                value={newFolderType}
-                onChange={(e) => setNewFolderType(e.target.value)}
-                className="bg-slate-700 border-slate-600 text-white"
-              />
-              <select
-                value={newFolderStatus}
-                onChange={(e) => setNewFolderStatus(e.target.value as "Secure" | "Encrypted" | "Active")}
-                className="w-full bg-slate-700 border border-slate-600 text-white rounded-md px-3 py-2"
-              >
-                <option value="Secure">Secure</option>
-                <option value="Encrypted">Encrypted</option>
-                <option value="Active">Active</option>
-              </select>
-              <div className="flex gap-2">
-                <Button onClick={() => handleAddFolder(folder.id)} className="bg-green-600 hover:bg-green-700 flex-1">
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Subfolder
-                </Button>
-                <Button onClick={handleCancelEdit} variant="outline" className="flex-1">
-                  <X className="h-4 w-4 mr-2" />
-                  Cancel
-                </Button>
+            <CardContent>
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-2xl font-bold text-white">
+                    {folder.file_count} files
+                    {folder.subfolder_count > 0 && (
+                      <span className="text-slate-400 text-lg ml-2">• {folder.subfolder_count} subfolders</span>
+                    )}
+                  </p>
+                  <p className="text-slate-400 text-sm">
+                    Last accessed: {new Date(folder.updated_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowFileUpload(showFileUpload === folder.id ? null : folder.id)
+                    }}
+                    size="sm"
+                    variant="ghost"
+                    className="text-slate-400 hover:text-white"
+                    title="Upload files"
+                  >
+                    <Upload className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
+
+              {/* File Upload Component */}
+              {showFileUpload === folder.id && (
+                <div className="mt-4 pt-4 border-t border-slate-600">
+                  <FileUpload
+                    folderId={folder.id}
+                    folderName={folder.name}
+                    folderPath={`vault/${folder.id}/${folder.name}`}
+                    onFilesChange={(count) => handleFileCountUpdate(folder.id, count)}
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
-        )}
 
-        {/* Render subfolders - ONLY when parent folder is expanded */}
-        {isExpanded && hasSubfolders && (
-          <div className="ml-4">{folder.subfolders!.map((subfolder) => renderFolder(subfolder, level + 1))}</div>
-        )}
-      </div>
-    )
-  }
+          {/* Add subfolder form - only show when adding to this specific folder */}
+          {addingSubfolderTo === folder.id && (
+            <Card
+              className="bg-slate-800 border-slate-600 border-dashed mb-2"
+              style={{ marginLeft: `${(level + 1) * 20}px` }}
+            >
+              <CardHeader className="pb-3">
+                <CardTitle className="text-white text-lg">Add Subfolder to {folder.name}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input
+                  placeholder="Subfolder name"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  className="bg-slate-700 border-slate-600 text-white"
+                />
+                <Input
+                  placeholder="Subfolder type (e.g., Contracts, Photos, Reports)"
+                  value={newFolderType}
+                  onChange={(e) => setNewFolderType(e.target.value)}
+                  className="bg-slate-700 border-slate-600 text-white"
+                />
+                <select
+                  value={newFolderStatus}
+                  onChange={(e) => setNewFolderStatus(e.target.value as "Secure" | "Encrypted" | "Active")}
+                  className="w-full bg-slate-700 border border-slate-600 text-white rounded-md px-3 py-2"
+                >
+                  <option value="Secure">Secure</option>
+                  <option value="Encrypted">Encrypted</option>
+                  <option value="Active">Active</option>
+                </select>
+                <div className="flex gap-2">
+                  <Button onClick={() => handleAddFolder(folder.id)} className="bg-green-600 hover:bg-green-700 flex-1">
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Subfolder
+                  </Button>
+                  <Button onClick={handleCancelEdit} variant="outline" className="flex-1">
+                    <X className="h-4 w-4 mr-2" />
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Render subfolders - ONLY when parent folder is expanded */}
+          {isExpanded && hasSubfolders && (
+            <div className="ml-4">{folder.subfolders!.map((subfolder) => renderFolder(subfolder, level + 1))}</div>
+          )}
+        </div>
+      )
+    },
+    [
+      expandedFolders,
+      selectedFolder,
+      editingFolder,
+      newFolderName,
+      newFolderType,
+      newFolderStatus,
+      addingSubfolderTo,
+      showFileUpload,
+      handleFolderClick,
+      toggleFolderExpansion,
+      handleSaveEdit,
+      handleCancelEdit,
+      handleEditFolder,
+      handleDeleteFolder,
+      handleAddFolder,
+      handleFileCountUpdate,
+    ],
+  )
+
+  // Memoize the folder list rendering for better performance
+  const folderList = useMemo(() => {
+    return folders.map((folder) => renderFolder(folder))
+  }, [folders, renderFolder])
 
   if (loading) {
     return (
@@ -737,8 +828,8 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
                 </Card>
               )}
 
-              {/* Render folder hierarchy */}
-              {folders.map((folder) => renderFolder(folder))}
+              {/* Render folder hierarchy - using memoized list */}
+              {folderList}
             </div>
           </div>
 
@@ -752,7 +843,7 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
                 {selectedFolder ? (
                   <div className="space-y-4">
                     <div className="text-center">
-                      <span className={`text-6xl ${selectedFolder.color}`}>{selectedFolder.icon}</span>
+                      <div className="text-6xl flex justify-center">{getFolderIcon(selectedFolder.type)}</div>
                       <h3 className="text-xl font-bold text-white mt-2">{selectedFolder.name}</h3>
                       <p className="text-slate-400">{selectedFolder.type}</p>
                     </div>
