@@ -260,6 +260,8 @@ export async function getFolders(): Promise<Folder[]> {
   try {
     // Try Supabase first
     const supabase = getSupabaseClient()
+
+    // Get all folders in a single query for better performance
     const { data, error } = await supabase
       .from("folders")
       .select("*")
@@ -280,10 +282,11 @@ export async function getFolders(): Promise<Folder[]> {
 
 // Build hierarchical structure and calculate subfolder counts
 function buildFolderHierarchy(folders: Folder[]): Folder[] {
+  // Create a map for quick folder lookup by ID
   const folderMap = new Map<number, Folder>()
   const rootFolders: Folder[] = []
 
-  // First pass: create map of all folders
+  // First pass: create map of all folders with empty subfolders arrays
   folders.forEach((folder) => {
     folderMap.set(folder.id, { ...folder, subfolders: [] })
   })
@@ -299,6 +302,9 @@ function buildFolderHierarchy(folders: Folder[]): Folder[] {
       if (parent) {
         parent.subfolders = parent.subfolders || []
         parent.subfolders.push(folderWithSubfolders)
+      } else {
+        // If parent doesn't exist (shouldn't happen), add as root
+        rootFolders.push(folderWithSubfolders)
       }
     }
   })
@@ -342,19 +348,23 @@ export async function createFolder(
     // Ensure parent_id is properly handled
     const folderToCreate = {
       ...folderWithCount,
-      parent_id: folder.parent_id || null, // Explicitly set null if undefined
+      parent_id: folder.parent_id === undefined ? null : folder.parent_id, // Explicitly set null if undefined
     }
+
+    // Log the folder being created for debugging
+    console.log("Creating folder:", folderToCreate)
 
     const { data, error } = await supabase.from("folders").insert([folderToCreate]).select().single()
 
     if (error) {
-      console.log("Supabase error, using localStorage:", error.message)
+      console.log("Supabase error creating folder:", error.message)
       return createLocalStorageFolder(folderWithCount)
     }
 
+    console.log("Folder created successfully:", data)
     return data
   } catch (error) {
-    console.log("Network error, using localStorage:", error)
+    console.log("Network error creating folder:", error)
     return createLocalStorageFolder(folderWithCount)
   }
 }
@@ -371,156 +381,4 @@ export async function updateFolder(id: number, updates: Partial<Folder>): Promis
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq("id", id)
       .select()
-      .single()
-
-    if (error) {
-      console.log("Supabase error, using localStorage:", error.message)
-      return updateLocalStorageFolder(id, updates)
-    }
-
-    return data
-  } catch (error) {
-    console.log("Network error, using localStorage:", error)
-    return updateLocalStorageFolder(id, updates)
-  }
-}
-
-// Delete a folder and all its subfolders
-export async function deleteFolder(id: number): Promise<boolean> {
-  if (!isBrowser) return false
-
-  try {
-    // Try Supabase first
-    const supabase = getSupabaseClient()
-
-    // First, get all folders to identify subfolders
-    const { data: allFolders, error: fetchError } = await supabase
-      .from("folders")
-      .select("*")
-      .eq("user_id", "demo-user")
-
-    if (fetchError) {
-      console.log("Supabase fetch error, using localStorage:", fetchError.message)
-      return deleteLocalStorageFolder(id)
-    }
-
-    // Find all subfolder IDs recursively
-    const folderIdsToDelete = findAllSubfolderIds(allFolders || [], id)
-    folderIdsToDelete.push(id) // Add the parent folder ID
-
-    // Delete all folders in a single operation
-    const { error } = await supabase.from("folders").delete().in("id", folderIdsToDelete)
-
-    if (error) {
-      console.log("Supabase delete error, using localStorage:", error.message)
-      return deleteLocalStorageFolder(id)
-    }
-
-    return true
-  } catch (error) {
-    console.log("Network error, using localStorage:", error)
-    return deleteLocalStorageFolder(id)
-  }
-}
-
-// Helper function to find all subfolder IDs recursively
-function findAllSubfolderIds(allFolders: Folder[], parentId: number): number[] {
-  const directSubfolders = allFolders.filter((f) => f.parent_id === parentId)
-  let allSubfolderIds: number[] = directSubfolders.map((f) => f.id)
-
-  // Recursively find subfolders of subfolders
-  directSubfolders.forEach((subfolder) => {
-    const nestedIds = findAllSubfolderIds(allFolders, subfolder.id)
-    allSubfolderIds = [...allSubfolderIds, ...nestedIds]
-  })
-
-  return allSubfolderIds
-}
-
-// LocalStorage fallback functions
-function getLocalStorageFolders(): Folder[] {
-  if (!isBrowser) return []
-
-  const stored = localStorage.getItem("vault-folders")
-  if (!stored) {
-    initializeLocalStorage()
-    return getLocalStorageFolders()
-  }
-
-  try {
-    const folders = JSON.parse(stored)
-    return buildFolderHierarchy(folders)
-  } catch (error) {
-    console.error("Error parsing localStorage folders:", error)
-    initializeLocalStorage()
-    return getLocalStorageFolders()
-  }
-}
-
-function createLocalStorageFolder(folder: Omit<Folder, "id" | "created_at" | "updated_at" | "subfolders">): Folder {
-  const folders = getAllLocalStorageFolders()
-  const newFolder: Folder = {
-    ...folder,
-    id: Math.max(...folders.map((f) => f.id), 0) + 1,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    subfolders: [],
-  }
-
-  folders.push(newFolder)
-  localStorage.setItem("vault-folders", JSON.stringify(folders))
-  return newFolder
-}
-
-function updateLocalStorageFolder(id: number, updates: Partial<Folder>): Folder | null {
-  const folders = getAllLocalStorageFolders()
-  const index = folders.findIndex((f) => f.id === id)
-
-  if (index === -1) return null
-
-  folders[index] = { ...folders[index], ...updates, updated_at: new Date().toISOString() }
-  localStorage.setItem("vault-folders", JSON.stringify(folders))
-  return folders[index]
-}
-
-function deleteLocalStorageFolder(id: number): boolean {
-  const folders = getAllLocalStorageFolders()
-
-  // Find all subfolder IDs recursively
-  const idsToDelete = findAllSubfolderIdsLocal(folders, id)
-  idsToDelete.push(id) // Add the parent folder ID
-
-  // Filter out all folders with IDs in the delete list
-  const filtered = folders.filter((f) => !idsToDelete.includes(f.id))
-
-  localStorage.setItem("vault-folders", JSON.stringify(filtered))
-  return true
-}
-
-// Helper function for localStorage to find all subfolder IDs recursively
-function findAllSubfolderIdsLocal(allFolders: Folder[], parentId: number): number[] {
-  const directSubfolders = allFolders.filter((f) => f.parent_id === parentId)
-  let allSubfolderIds: number[] = directSubfolders.map((f) => f.id)
-
-  // Recursively find subfolders of subfolders
-  directSubfolders.forEach((subfolder) => {
-    const nestedIds = findAllSubfolderIdsLocal(allFolders, subfolder.id)
-    allSubfolderIds = [...allSubfolderIds, ...nestedIds]
-  })
-
-  return allSubfolderIds
-}
-
-function getAllLocalStorageFolders(): Folder[] {
-  if (!isBrowser) return []
-
-  const stored = localStorage.getItem("vault-folders")
-  if (!stored) return []
-
-  try {
-    return JSON.parse(stored)
-  } catch (error) {
-    console.error("Error parsing localStorage folders:", error)
-    return []
-  }
-}
+      .single
