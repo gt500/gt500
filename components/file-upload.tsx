@@ -78,9 +78,15 @@ export default function FileUpload({ folderId, folderName, folderPath, onFilesCh
 
       // Update file count
       const updatedFiles = await oneDriveService.getFiles(folderPath)
-      onFilesChange(updatedFiles.length)
+      const newCount = updatedFiles.length
+      setFiles(updatedFiles)
+      onFilesChange(newCount)
+
+      // Show success message
+      alert(`Successfully uploaded ${filesToUpload.length} file(s). Folder now contains ${newCount} items.`)
     } catch (error) {
       console.error("Upload error:", error)
+      alert("Error uploading files. Please try again.")
     } finally {
       setUploading(false)
     }
@@ -199,6 +205,7 @@ export default function FileUpload({ folderId, folderName, folderPath, onFilesCh
                   <li>• 1TB storage</li>
                   <li>• Office 365 included</li>
                   <li>• Priority support</li>
+                  <li>• Advanced support</li>
                   <li>• Advanced collaboration</li>
                 </ul>
                 <Button

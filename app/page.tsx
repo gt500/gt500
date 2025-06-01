@@ -1,28 +1,43 @@
-import DigitalVaultHub from "@/components/digital-vault-hub"
-import Image from "next/image"
+"use client"
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 
 export default function Home() {
+  const router = useRouter()
+
+  useEffect(() => {
+    // Check if user is already logged in
+    const storedUser = localStorage.getItem("vault-user")
+
+    if (storedUser) {
+      // If logged in, go directly to digital vault
+      router.push("/digital-assets-vault")
+    } else {
+      // Otherwise go to login page
+      router.push("/login")
+    }
+  }, [router])
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-slate-800">
       <div className="container mx-auto px-4 flex flex-col items-center">
-        {/* Header with logo and title side by side */}
-        <div className="flex items-center justify-center gap-5 mb-8">
-          {/* Gaz2Go Logo - increased by 50% */}
-          <div className="w-[90px] h-[90px] flex items-center justify-center">
-            <Image
-              src="/images/gaz2go-logo-transparent.png"
-              alt="Gaz2Go Logo"
-              width={90}
-              height={90}
-              className="object-contain"
-              priority
-            />
-          </div>
-
-          <h1 className="text-4xl font-bold text-white">Secure Digital Vault</h1>
+        <div className="text-white text-xl flex items-center">
+          <svg
+            className="animate-spin -ml-1 mr-3 h-8 w-8 text-white"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          Redirecting to Digital Vault...
         </div>
-
-        <DigitalVaultHub />
       </div>
     </main>
   )
