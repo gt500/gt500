@@ -408,21 +408,36 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
   const foldersRef = useRef(folders)
   foldersRef.current = folders
 
+  const {
+    user,
+    loading: authLoading,
+    logout,
+    checkFolderAccess,
+    checkFolderVisibility,
+    getFolderEncryption,
+    getSecurityLevel,
+  } = useAuth()
+
   // Load folders on component mount - optimized with useCallback
   const loadFolders = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       await initializeDatabase()
-      const folderData = await getFolders()
-      setFolders(folderData)
+      const folderData = await getFolders(user?.email)
+
+      // Filter folders based on visibility permissions
+      const visibleFolders = folderData.filter((folder) => checkFolderVisibility(folder.name))
+
+      setFolders(visibleFolders)
+      console.log(`Security Event: Loaded ${visibleFolders.length} visible folders for ${user?.email}`)
     } catch (error) {
       console.error("Error loading folders:", error)
       setError("Failed to load folders. Please try again.")
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user?.email, checkFolderVisibility])
 
   useEffect(() => {
     loadFolders()
@@ -699,19 +714,34 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
         </div>
       </header>
 
-      {/* Status Cards */}
+      {/* Enhanced Security Status */}
       <div className="container mx-auto py-6 px-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card className="bg-[#1e293b] border-slate-700">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-slate-400">Total Folders</h2>
-                  <p className="text-4xl font-bold text-white mt-1">{totalFolders}</p>
-                  <p className="text-slate-400 text-sm mt-1">Main asset categories</p>
+                  <h2 className="text-slate-400">Visible Folders</h2>
+                  <p className="text-4xl font-bold text-white mt-1">{folders.length}</p>
+                  <p className="text-slate-400 text-sm mt-1">Authorized for you</p>
                 </div>
                 <div className="bg-blue-500/20 p-3 rounded-lg">
                   <FolderIcon className="h-6 w-6 text-blue-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-[#1e293b] border-slate-700">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-slate-400">Security Level</h2>
+                  <p className="text-4xl font-bold text-white mt-1">{user?.securityLevel || 0}</p>
+                  <p className="text-slate-400 text-sm mt-1">Your clearance level</p>
+                </div>
+                <div className="bg-yellow-500/20 p-3 rounded-lg">
+                  <Shield className="h-6 w-6 text-yellow-400" />
                 </div>
               </div>
             </CardContent>
@@ -736,9 +766,9 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-slate-400">Security Status</h2>
+                  <h2 className="text-slate-400">Encryption Status</h2>
                   <p className="text-4xl font-bold text-green-400 mt-1">Active</p>
-                  <p className="text-slate-400 text-sm mt-1">All systems secure</p>
+                  <p className="text-slate-400 text-sm mt-1">Military-grade security</p>
                 </div>
                 <div className="bg-green-500/20 p-3 rounded-lg">
                   <Shield className="h-6 w-6 text-green-400" />
@@ -851,14 +881,34 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {folders.map((folder) => {
                 const hasAccess = checkFolderAccess(folder.name)
+                const encryptionType = getFolderEncryption(folder.name)
+                const securityLevel = getSecurityLevel(folder.name)
+
                 return (
                   <div
                     key={folder.id}
                     className={`bg-[#1e293b] border border-slate-700 rounded-lg overflow-hidden ${
                       hasAccess ? "hover:border-blue-500" : "hover:border-red-500"
-                    } transition-colors cursor-pointer`}
+                    } transition-colors cursor-pointer relative`}
                     onClick={() => handleFolderClick(folder)}
                   >
+                    {/* Security Level Indicator */}
+                    <div className="absolute top-2 right-2 z-10">
+                      <div
+                        className={`px-2 py-1 rounded text-xs font-bold ${
+                          securityLevel >= 5
+                            ? "bg-red-900 text-red-200"
+                            : securityLevel >= 3
+                              ? "bg-orange-900 text-orange-200"
+                              : securityLevel >= 2
+                                ? "bg-yellow-900 text-yellow-200"
+                                : "bg-green-900 text-green-200"
+                        }`}
+                      >
+                        L{securityLevel}
+                      </div>
+                    </div>
+
                     <div className="p-6">
                       <div className="flex items-center mb-4">
                         <div className={`w-12 h-12 rounded-lg ${getFolderIconBgColor(folder.type)} p-2 mr-4`}>
@@ -896,12 +946,28 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
                           </div>
                         </div>
                       </div>
-                      <div className="flex justify-between items-center">
-                        <p className="text-slate-400 text-sm">{folder.type}</p>
-                        <p className="text-sm bg-slate-800 px-2 py-1 rounded">
-                          <span className="font-medium text-white">{folder.file_count}</span>
-                          <span className="text-slate-400"> items</span>
-                        </p>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <p className="text-slate-400 text-sm">{folder.type}</p>
+                          <p className="text-sm bg-slate-800 px-2 py-1 rounded">
+                            <span className="font-medium text-white">{folder.file_count}</span>
+                            <span className="text-slate-400"> items</span>
+                          </p>
+                        </div>
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-500">Encryption:</span>
+                          <span
+                            className={`font-mono ${
+                              encryptionType.includes("RSA")
+                                ? "text-red-400"
+                                : encryptionType.includes("256")
+                                  ? "text-blue-400"
+                                  : "text-green-400"
+                            }`}
+                          >
+                            {encryptionType}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>

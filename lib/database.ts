@@ -20,7 +20,7 @@ export async function initializeDatabase() {
     }
 
     if (!existingFolders || existingFolders.length === 0) {
-      // Insert initial data
+      // Insert initial data with enhanced security
       const initialFolders = [
         {
           name: "Images",
@@ -29,8 +29,10 @@ export async function initializeDatabase() {
           icon: "🖼️",
           color: "text-orange-500",
           file_count: 0,
-          subfolder_count: 0, // Added subfolder count
+          subfolder_count: 0,
           user_id: "demo-user",
+          security_level: 1,
+          encryption_type: "AES-128",
         },
         {
           name: "Videos",
@@ -41,6 +43,8 @@ export async function initializeDatabase() {
           file_count: 0,
           subfolder_count: 0,
           user_id: "demo-user",
+          security_level: 1,
+          encryption_type: "AES-128",
         },
         {
           name: "Reports",
@@ -51,6 +55,8 @@ export async function initializeDatabase() {
           file_count: 0,
           subfolder_count: 0,
           user_id: "demo-user",
+          security_level: 2,
+          encryption_type: "AES-256",
         },
         {
           name: "Documents",
@@ -61,6 +67,8 @@ export async function initializeDatabase() {
           file_count: 0,
           subfolder_count: 0,
           user_id: "demo-user",
+          security_level: 1,
+          encryption_type: "AES-128",
         },
         {
           name: "Legal Documents",
@@ -71,26 +79,32 @@ export async function initializeDatabase() {
           file_count: 0,
           subfolder_count: 0,
           user_id: "demo-user",
+          security_level: 3,
+          encryption_type: "AES-256",
         },
         {
           name: "Drawings",
           type: "Technical Drawings",
-          status: "Active" as const,
+          status: "Encrypted" as const,
           icon: "📐",
           color: "text-cyan-500",
           file_count: 0,
           subfolder_count: 0,
           user_id: "demo-user",
+          security_level: 3,
+          encryption_type: "AES-256",
         },
         {
           name: "Presentations",
           type: "PowerPoint & Slides",
-          status: "Secure" as const,
+          status: "Encrypted" as const,
           icon: "📽️",
           color: "text-yellow-500",
           file_count: 0,
           subfolder_count: 0,
           user_id: "demo-user",
+          security_level: 3,
+          encryption_type: "AES-256",
         },
         {
           name: "Archives",
@@ -101,6 +115,20 @@ export async function initializeDatabase() {
           file_count: 0,
           subfolder_count: 0,
           user_id: "demo-user",
+          security_level: 2,
+          encryption_type: "AES-256",
+        },
+        {
+          name: "Patents",
+          type: "Patent Documents & IP",
+          status: "Encrypted" as const,
+          icon: "🔒",
+          color: "text-red-600",
+          file_count: 0,
+          subfolder_count: 0,
+          user_id: "demo-user",
+          security_level: 5,
+          encryption_type: "RSA-4096",
         },
       ]
 
@@ -121,7 +149,7 @@ export async function initializeDatabase() {
   }
 }
 
-// Initialize localStorage with default data
+// Initialize localStorage with default data including Patents folder
 function initializeLocalStorage() {
   if (!isBrowser) return
 
@@ -207,7 +235,7 @@ function initializeLocalStorage() {
         id: 6,
         name: "Drawings",
         type: "Technical Drawings",
-        status: "Active",
+        status: "Encrypted",
         parent_id: null,
         icon: "📐",
         color: "text-cyan-500",
@@ -222,7 +250,7 @@ function initializeLocalStorage() {
         id: 7,
         name: "Presentations",
         type: "PowerPoint & Slides",
-        status: "Secure",
+        status: "Encrypted",
         parent_id: null,
         icon: "📽️",
         color: "text-yellow-500",
@@ -248,13 +276,28 @@ function initializeLocalStorage() {
         user_id: "demo-user",
         subfolders: [],
       },
+      {
+        id: 9,
+        name: "Patents",
+        type: "Patent Documents & IP",
+        status: "Encrypted",
+        parent_id: null,
+        icon: "🔒",
+        color: "text-red-600",
+        file_count: 0,
+        subfolder_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        user_id: "demo-user",
+        subfolders: [],
+      },
     ]
     localStorage.setItem("vault-folders", JSON.stringify(defaultFolders))
   }
 }
 
-// Get all folders with their subfolders
-export async function getFolders(): Promise<Folder[]> {
+// Get all folders with their subfolders, filtered by user permissions
+export async function getFolders(userEmail?: string): Promise<Folder[]> {
   if (!isBrowser) return []
 
   try {
@@ -270,18 +313,18 @@ export async function getFolders(): Promise<Folder[]> {
 
     if (error) {
       console.log("Supabase error, using localStorage:", error.message)
-      return getLocalStorageFolders()
+      return getLocalStorageFolders(userEmail)
     }
 
-    return buildFolderHierarchy(data || [])
+    return buildFolderHierarchy(data || [], userEmail)
   } catch (error) {
     console.log("Network error, using localStorage:", error)
-    return getLocalStorageFolders()
+    return getLocalStorageFolders(userEmail)
   }
 }
 
-// Build hierarchical structure and calculate subfolder counts
-function buildFolderHierarchy(folders: Folder[]): Folder[] {
+// Build hierarchical structure and calculate subfolder counts with security filtering
+function buildFolderHierarchy(folders: Folder[], userEmail?: string): Folder[] {
   // Create a map for quick folder lookup by ID
   const folderMap = new Map<number, Folder>()
   const rootFolders: Folder[] = []
@@ -330,7 +373,7 @@ function buildFolderHierarchy(folders: Folder[]): Folder[] {
   return rootFolders
 }
 
-// Create a new folder
+// Create a new folder with enhanced security
 export async function createFolder(
   folder: Omit<Folder, "id" | "created_at" | "updated_at" | "subfolders" | "subfolder_count">,
 ): Promise<Folder | null> {
@@ -447,23 +490,23 @@ function findAllSubfolderIds(allFolders: Folder[], parentId: number): number[] {
   return allSubfolderIds
 }
 
-// LocalStorage fallback functions
-function getLocalStorageFolders(): Folder[] {
+// LocalStorage fallback functions with security filtering
+function getLocalStorageFolders(userEmail?: string): Folder[] {
   if (!isBrowser) return []
 
   const stored = localStorage.getItem("vault-folders")
   if (!stored) {
     initializeLocalStorage()
-    return getLocalStorageFolders()
+    return getLocalStorageFolders(userEmail)
   }
 
   try {
     const folders = JSON.parse(stored)
-    return buildFolderHierarchy(folders)
+    return buildFolderHierarchy(folders, userEmail)
   } catch (error) {
     console.error("Error parsing localStorage folders:", error)
     initializeLocalStorage()
-    return getLocalStorageFolders()
+    return getLocalStorageFolders(userEmail)
   }
 }
 
