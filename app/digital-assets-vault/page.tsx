@@ -67,37 +67,47 @@ export default function DigitalAssetsVault() {
     setAuthError("")
     setIsUnlocking(true)
 
-    // Simulate authentication delay
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      // Simulate authentication delay
+      await new Promise((resolve) => setTimeout(resolve, 2000))
 
-    if (password === correctPassword) {
-      setDoorAnimation("opening")
+      if (password === correctPassword) {
+        setDoorAnimation("opening")
 
-      // Wait for door animation to complete (5 seconds)
-      setTimeout(() => {
-        setVaultOpen(true)
-        setIsAuthenticated(true)
+        // Wait for door animation to complete (5 seconds)
+        setTimeout(() => {
+          setVaultOpen(true)
+          setIsAuthenticated(true)
+          setIsUnlocking(false)
+        }, 5000)
+      } else {
+        setAuthError("Invalid password. Access denied.")
         setIsUnlocking(false)
-      }, 5000)
-    } else {
-      setAuthError("Invalid password. Access denied.")
-      setIsUnlocking(false)
-      setDoorAnimation("shake")
+        setDoorAnimation("shake")
 
-      // Clear shake animation
-      setTimeout(() => setDoorAnimation(""), 1000)
+        // Clear shake animation
+        setTimeout(() => setDoorAnimation(""), 1000)
+      }
+    } catch (error) {
+      console.error("Authentication error:", error)
+      setAuthError("Authentication failed. Please try again.")
+      setIsUnlocking(false)
     }
   }
 
   const handleLockVault = () => {
-    setDoorAnimation("closing")
-    setVaultOpen(false)
+    try {
+      setDoorAnimation("closing")
+      setVaultOpen(false)
 
-    setTimeout(() => {
-      setIsAuthenticated(false)
-      setPassword("")
-      setDoorAnimation("")
-    }, 5000)
+      setTimeout(() => {
+        setIsAuthenticated(false)
+        setPassword("")
+        setDoorAnimation("")
+      }, 5000)
+    } catch (error) {
+      console.error("Error locking vault:", error)
+    }
   }
 
   if (authLoading) {
@@ -344,6 +354,8 @@ const getFolderIcon = (folderType: string, isOpen = false) => {
     return <Cpu className="h-full w-full text-green-400" />
   } else if (type.includes("wheel") || type.includes("product")) {
     return <Cog className="h-full w-full text-orange-400" />
+  } else if (type.includes("patent")) {
+    return <Shield className="h-full w-full text-red-400" />
   } else {
     return <FolderIcon className="h-full w-full text-blue-400" />
   }
@@ -381,6 +393,8 @@ const getFolderIconBgColor = (folderType: string) => {
     return "bg-green-500"
   } else if (type.includes("wheel") || type.includes("product")) {
     return "bg-orange-500"
+  } else if (type.includes("patent")) {
+    return "bg-red-600"
   } else {
     return "bg-blue-500"
   }
@@ -423,11 +437,18 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
     setLoading(true)
     setError(null)
     try {
+      console.log("Initializing database...")
       await initializeDatabase()
+
+      console.log("Loading folders for user:", user?.email)
       const folderData = await getFolders(user?.email)
 
       // Filter folders based on visibility permissions
-      const visibleFolders = folderData.filter((folder) => checkFolderVisibility(folder.name))
+      const visibleFolders = folderData.filter((folder) => {
+        const isVisible = checkFolderVisibility(folder.name)
+        console.log(`Folder ${folder.name} visibility for ${user?.email}:`, isVisible)
+        return isVisible
+      })
 
       setFolders(visibleFolders)
       console.log(`Security Event: Loaded ${visibleFolders.length} visible folders for ${user?.email}`)
@@ -440,8 +461,10 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
   }, [user?.email, checkFolderVisibility])
 
   useEffect(() => {
-    loadFolders()
-  }, [loadFolders])
+    if (user?.email) {
+      loadFolders()
+    }
+  }, [loadFolders, user?.email])
 
   // Optimized folder creation with useCallback
   const handleAddFolder = useCallback(
@@ -605,16 +628,21 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
   // Handle folder click - open folder view
   const handleFolderClick = useCallback(
     (folder: FolderType) => {
-      // Check if user has access to this folder
-      if (!checkFolderAccess(folder.name)) {
-        setError(`Access denied: You don't have permission to access ${folder.name}`)
-        return
-      }
+      try {
+        // Check if user has access to this folder
+        if (!checkFolderAccess(folder.name)) {
+          setError(`Access denied: You don't have permission to access ${folder.name}`)
+          return
+        }
 
-      setCurrentFolder(folder)
-      setCurrentView("folder")
+        setCurrentFolder(folder)
+        setCurrentView("folder")
+      } catch (error) {
+        console.error("Error handling folder click:", error)
+        setError("Error accessing folder. Please try again.")
+      }
     },
-    [checkFolderAccess, setCurrentFolder, setCurrentView, setError],
+    [checkFolderAccess],
   )
 
   // Handle back to grid view
@@ -625,21 +653,26 @@ function VaultInterior({ onLockVault }: { onLockVault: () => void }) {
 
   // Handle subfolder click
   const handleSubfolderClick = useCallback((subfolder: FolderType) => {
-    // Find the complete subfolder data with all properties
-    const findFullSubfolderData = (folders: FolderType[], id: number): FolderType | null => {
-      for (const folder of folders) {
-        if (folder.id === id) return folder
-        if (folder.subfolders) {
-          const found = findFullSubfolderData(folder.subfolders, id)
-          if (found) return found
+    try {
+      // Find the complete subfolder data with all properties
+      const findFullSubfolderData = (folders: FolderType[], id: number): FolderType | null => {
+        for (const folder of folders) {
+          if (folder.id === id) return folder
+          if (folder.subfolders) {
+            const found = findFullSubfolderData(folder.subfolders, id)
+            if (found) return found
+          }
         }
+        return null
       }
-      return null
-    }
 
-    const fullSubfolderData = findFullSubfolderData(foldersRef.current, subfolder.id)
-    if (fullSubfolderData) {
-      setCurrentFolder(fullSubfolderData)
+      const fullSubfolderData = findFullSubfolderData(foldersRef.current, subfolder.id)
+      if (fullSubfolderData) {
+        setCurrentFolder(fullSubfolderData)
+      }
+    } catch (error) {
+      console.error("Error handling subfolder click:", error)
+      setError("Error accessing subfolder. Please try again.")
     }
   }, [])
 

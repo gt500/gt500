@@ -1,146 +1,16 @@
-import { getSupabaseClient } from "./supabase"
 import type { Folder } from "./supabase"
 
 // Check if we're in browser environment
 const isBrowser = typeof window !== "undefined"
 
-// Initialize database with sample data if empty
+// Initialize database with sample data - always use localStorage for demo
 export async function initializeDatabase() {
   try {
     if (!isBrowser) return false
 
-    // Try Supabase first
-    const supabase = getSupabaseClient()
-    const { data: existingFolders, error } = await supabase.from("folders").select("id").limit(1)
-
-    if (error) {
-      console.log("Supabase not available, using localStorage:", error.message)
-      initializeLocalStorage()
-      return false
-    }
-
-    if (!existingFolders || existingFolders.length === 0) {
-      // Insert initial data with enhanced security
-      const initialFolders = [
-        {
-          name: "Images",
-          type: "Image Files",
-          status: "Secure" as const,
-          icon: "🖼️",
-          color: "text-orange-500",
-          file_count: 0,
-          subfolder_count: 0,
-          user_id: "demo-user",
-          security_level: 1,
-          encryption_type: "AES-128",
-        },
-        {
-          name: "Videos",
-          type: "Video Files",
-          status: "Secure" as const,
-          icon: "🎥",
-          color: "text-blue-500",
-          file_count: 0,
-          subfolder_count: 0,
-          user_id: "demo-user",
-          security_level: 1,
-          encryption_type: "AES-128",
-        },
-        {
-          name: "Reports",
-          type: "Business Reports",
-          status: "Encrypted" as const,
-          icon: "📊",
-          color: "text-green-500",
-          file_count: 0,
-          subfolder_count: 0,
-          user_id: "demo-user",
-          security_level: 2,
-          encryption_type: "AES-256",
-        },
-        {
-          name: "Documents",
-          type: "General Documents",
-          status: "Secure" as const,
-          icon: "📄",
-          color: "text-purple-500",
-          file_count: 0,
-          subfolder_count: 0,
-          user_id: "demo-user",
-          security_level: 1,
-          encryption_type: "AES-128",
-        },
-        {
-          name: "Legal Documents",
-          type: "Legal & Contracts",
-          status: "Encrypted" as const,
-          icon: "⚖️",
-          color: "text-red-500",
-          file_count: 0,
-          subfolder_count: 0,
-          user_id: "demo-user",
-          security_level: 3,
-          encryption_type: "AES-256",
-        },
-        {
-          name: "Drawings",
-          type: "Technical Drawings",
-          status: "Encrypted" as const,
-          icon: "📐",
-          color: "text-cyan-500",
-          file_count: 0,
-          subfolder_count: 0,
-          user_id: "demo-user",
-          security_level: 3,
-          encryption_type: "AES-256",
-        },
-        {
-          name: "Presentations",
-          type: "PowerPoint & Slides",
-          status: "Encrypted" as const,
-          icon: "📽️",
-          color: "text-yellow-500",
-          file_count: 0,
-          subfolder_count: 0,
-          user_id: "demo-user",
-          security_level: 3,
-          encryption_type: "AES-256",
-        },
-        {
-          name: "Archives",
-          type: "Archived Files",
-          status: "Encrypted" as const,
-          icon: "📦",
-          color: "text-indigo-500",
-          file_count: 0,
-          subfolder_count: 0,
-          user_id: "demo-user",
-          security_level: 2,
-          encryption_type: "AES-256",
-        },
-        {
-          name: "Patents",
-          type: "Patent Documents & IP",
-          status: "Encrypted" as const,
-          icon: "🔒",
-          color: "text-red-600",
-          file_count: 0,
-          subfolder_count: 0,
-          user_id: "demo-user",
-          security_level: 5,
-          encryption_type: "RSA-4096",
-        },
-      ]
-
-      const { error: insertError } = await supabase.from("folders").insert(initialFolders)
-
-      if (insertError) {
-        console.error("Error inserting initial data:", insertError)
-        initializeLocalStorage()
-        return false
-      }
-    }
-
+    // For this demo, we'll always use localStorage to avoid network issues
+    console.log("Initializing database with localStorage")
+    initializeLocalStorage()
     return true
   } catch (error) {
     console.error("Database initialization error:", error)
@@ -293,6 +163,7 @@ function initializeLocalStorage() {
       },
     ]
     localStorage.setItem("vault-folders", JSON.stringify(defaultFolders))
+    console.log("Initialized localStorage with default folders")
   }
 }
 
@@ -301,25 +172,12 @@ export async function getFolders(userEmail?: string): Promise<Folder[]> {
   if (!isBrowser) return []
 
   try {
-    // Try Supabase first
-    const supabase = getSupabaseClient()
-
-    // Get all folders in a single query for better performance
-    const { data, error } = await supabase
-      .from("folders")
-      .select("*")
-      .eq("user_id", "demo-user")
-      .order("created_at", { ascending: true })
-
-    if (error) {
-      console.log("Supabase error, using localStorage:", error.message)
-      return getLocalStorageFolders(userEmail)
-    }
-
-    return buildFolderHierarchy(data || [], userEmail)
-  } catch (error) {
-    console.log("Network error, using localStorage:", error)
+    // Always use localStorage for this demo to avoid network issues
+    console.log("Loading folders from localStorage")
     return getLocalStorageFolders(userEmail)
+  } catch (error) {
+    console.log("Error loading folders:", error)
+    return []
   }
 }
 
@@ -385,30 +243,12 @@ export async function createFolder(
   }
 
   try {
-    // Try Supabase first
-    const supabase = getSupabaseClient()
-
-    // Ensure parent_id is properly handled
-    const folderToCreate = {
-      ...folderWithCount,
-      parent_id: folder.parent_id === undefined ? null : folder.parent_id, // Explicitly set null if undefined
-    }
-
-    // Log the folder being created for debugging
-    console.log("Creating folder:", folderToCreate)
-
-    const { data, error } = await supabase.from("folders").insert([folderToCreate]).select().single()
-
-    if (error) {
-      console.log("Supabase error creating folder:", error.message)
-      return createLocalStorageFolder(folderWithCount)
-    }
-
-    console.log("Folder created successfully:", data)
-    return data
-  } catch (error) {
-    console.log("Network error creating folder:", error)
+    // Always use localStorage for this demo
+    console.log("Creating folder in localStorage:", folderWithCount)
     return createLocalStorageFolder(folderWithCount)
+  } catch (error) {
+    console.log("Error creating folder:", error)
+    return null
   }
 }
 
@@ -417,24 +257,12 @@ export async function updateFolder(id: number, updates: Partial<Folder>): Promis
   if (!isBrowser) return null
 
   try {
-    // Try Supabase first
-    const supabase = getSupabaseClient()
-    const { data, error } = await supabase
-      .from("folders")
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .select()
-      .single()
-
-    if (error) {
-      console.log("Supabase error, using localStorage:", error.message)
-      return updateLocalStorageFolder(id, updates)
-    }
-
-    return data
-  } catch (error) {
-    console.log("Network error, using localStorage:", error)
+    // Always use localStorage for this demo
+    console.log("Updating folder in localStorage:", id, updates)
     return updateLocalStorageFolder(id, updates)
+  } catch (error) {
+    console.log("Error updating folder:", error)
+    return null
   }
 }
 
@@ -443,65 +271,29 @@ export async function deleteFolder(id: number): Promise<boolean> {
   if (!isBrowser) return false
 
   try {
-    // Try Supabase first
-    const supabase = getSupabaseClient()
-
-    // First, get all folders to identify subfolders
-    const { data: allFolders, error: fetchError } = await supabase
-      .from("folders")
-      .select("*")
-      .eq("user_id", "demo-user")
-
-    if (fetchError) {
-      console.log("Supabase fetch error, using localStorage:", fetchError.message)
-      return deleteLocalStorageFolder(id)
-    }
-
-    // Find all subfolder IDs recursively
-    const folderIdsToDelete = findAllSubfolderIds(allFolders || [], id)
-    folderIdsToDelete.push(id) // Add the parent folder ID
-
-    // Delete all folders in a single operation
-    const { error } = await supabase.from("folders").delete().in("id", folderIdsToDelete)
-
-    if (error) {
-      console.log("Supabase delete error, using localStorage:", error.message)
-      return deleteLocalStorageFolder(id)
-    }
-
-    return true
-  } catch (error) {
-    console.log("Network error, using localStorage:", error)
+    // Always use localStorage for this demo
+    console.log("Deleting folder from localStorage:", id)
     return deleteLocalStorageFolder(id)
+  } catch (error) {
+    console.log("Error deleting folder:", error)
+    return false
   }
 }
 
-// Helper function to find all subfolder IDs recursively
-function findAllSubfolderIds(allFolders: Folder[], parentId: number): number[] {
-  const directSubfolders = allFolders.filter((f) => f.parent_id === parentId)
-  let allSubfolderIds: number[] = directSubfolders.map((f) => f.id)
-
-  // Recursively find subfolders of subfolders
-  directSubfolders.forEach((subfolder) => {
-    const nestedIds = findAllSubfolderIds(allFolders, subfolder.id)
-    allSubfolderIds = [...allSubfolderIds, ...nestedIds]
-  })
-
-  return allSubfolderIds
-}
-
-// LocalStorage fallback functions with security filtering
+// LocalStorage functions
 function getLocalStorageFolders(userEmail?: string): Folder[] {
   if (!isBrowser) return []
 
   const stored = localStorage.getItem("vault-folders")
   if (!stored) {
+    console.log("No folders found in localStorage, initializing...")
     initializeLocalStorage()
     return getLocalStorageFolders(userEmail)
   }
 
   try {
     const folders = JSON.parse(stored)
+    console.log("Loaded folders from localStorage:", folders.length)
     return buildFolderHierarchy(folders, userEmail)
   } catch (error) {
     console.error("Error parsing localStorage folders:", error)
@@ -522,6 +314,7 @@ function createLocalStorageFolder(folder: Omit<Folder, "id" | "created_at" | "up
 
   folders.push(newFolder)
   localStorage.setItem("vault-folders", JSON.stringify(folders))
+  console.log("Created folder in localStorage:", newFolder)
   return newFolder
 }
 
@@ -529,10 +322,14 @@ function updateLocalStorageFolder(id: number, updates: Partial<Folder>): Folder 
   const folders = getAllLocalStorageFolders()
   const index = folders.findIndex((f) => f.id === id)
 
-  if (index === -1) return null
+  if (index === -1) {
+    console.log("Folder not found for update:", id)
+    return null
+  }
 
   folders[index] = { ...folders[index], ...updates, updated_at: new Date().toISOString() }
   localStorage.setItem("vault-folders", JSON.stringify(folders))
+  console.log("Updated folder in localStorage:", folders[index])
   return folders[index]
 }
 
@@ -547,6 +344,7 @@ function deleteLocalStorageFolder(id: number): boolean {
   const filtered = folders.filter((f) => !idsToDelete.includes(f.id))
 
   localStorage.setItem("vault-folders", JSON.stringify(filtered))
+  console.log("Deleted folder and subfolders from localStorage:", idsToDelete)
   return true
 }
 

@@ -10,13 +10,16 @@ const hasValidCredentials =
   supabaseAnonKey !== "placeholder-key" &&
   supabaseUrl.includes("supabase.co")
 
+// Only create client if we have valid credentials
 export const supabase = hasValidCredentials ? createClient(supabaseUrl, supabaseAnonKey) : null
 
-// Client-side singleton pattern
+// Client-side singleton pattern with error handling
 let supabaseClient: ReturnType<typeof createClient> | null = null
 
 export function getSupabaseClient() {
+  // Always return null if credentials are invalid - forces localStorage fallback
   if (!hasValidCredentials) {
+    console.log("Supabase credentials not available, using localStorage fallback")
     throw new Error("Supabase credentials not available")
   }
 
